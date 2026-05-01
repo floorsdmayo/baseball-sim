@@ -1,20 +1,22 @@
 import streamlit as st
 import numpy as np
 import plotly.graph_objects as go
-import time
 
 st.set_page_config(page_title="Baseball Pro", layout="wide")
 
+# going back to CSS because do i have a choice
 st.markdown("""
     <style>
-    div.stButton > button:first-child {
-        background-color: #28a745 !important;
-        color: white !important;
-        width: 100%;
-        border-radius: 10px;
-        height: 3.5em;
-        font-weight: bold;
-        border: none;
+    g.updatemenu-button rect {
+        fill: #28a745 !important;
+        stroke: #1e7e34 !important;
+    }
+    g.updatemenu-button text {
+        fill: white !important;
+        font-weight: bold !important;
+    }
+    .js-plotly-plot {
+        height: 500px !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -48,37 +50,44 @@ def get_trajectory(v0, angle_deg, drag=True):
 drag_path = get_trajectory(v0, angle)
 ideal_path = get_trajectory(v0, angle, drag=False)
 
-def draw_plot(frame_idx):
-    fig = go.Figure(
-        data=[
-            go.Scatter(x=drag_path[:,0], y=drag_path[:,1], name="With Drag", line=dict(color="#28a745", width=3)),
-            go.Scatter(x=ideal_path[:,0], y=ideal_path[:,1], name="No Drag", line=dict(color="#9b59b6", dash="dash")),
-            go.Scatter(x=[drag_path[frame_idx,0]], y=[drag_path[frame_idx,1]], 
-                       mode="markers", 
-                       marker=dict(color="white", size=15, line=dict(color="red", width=2)),
-                       showlegend=False)
-        ],
-        layout=go.Layout(
-            xaxis=dict(range=[0, max(ideal_path[:,0]) * 1.1], title="Distance (m)"),
-            yaxis=dict(range=[0, max(ideal_path[:,1]) * 1.1], title="Height (m)"),
-            margin=dict(l=10, r=10, t=10, b=10),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, x=1)
-        )
-    )
-    return fig
+max_len = max(len(drag_path), len(ideal_path))
+def pad_path(path, length):
+    last_val = path[-1]
+    return np.vstack([path, np.tile(last_val, (length - len(path), 1))])
 
-placeholder = st.empty() # This creates a spot for the graph to live
+drag_padded = pad_path(drag_path, max_len)
+ideal_padded = pad_path(ideal_path, max_len)
 
-if st.button("PLAY BALL"):
-    for i in range(0, len(drag_path), 2):
-        with placeholder:
-            st.plotly_chart(draw_plot(i), use_container_width=True, config={'displayModeBar': False}, key=f"anim_{i}")
-        time.sleep(0.01)
-else:
-    with placeholder:
-        st.plotly_chart(draw_plot(0), use_container_width=True, config={'displayModeBar': False}, key="static_start")
+fig = go.Figure(
+    data=[
+        go.Scatter(x=drag_padded[:,0], y=drag_padded[:,1], name="With Drag", line=dict(color="#28a745", width=3)),
+        go.Scatter(x=ideal_padded[:,0], y=ideal_padded[:,1], name="No Drag", line=dict(color="#9b59b6", dash="dash")),
+        go.Scatter(x=[0], y=[0], name="Ball", mode="markers", marker=dict(color="white", size=14, line=dict(color="red", width=2)))
+    ],
+    layout=go.Layout(
+        xaxis=dict(range=[0, max(ideal_path[:,0]) * 1.1], title="Distance (m)"),
+        yaxis=dict(range=[0, max(ideal_path[:,1]) * 1.1], title="Height (m)"),
+        updatemenus=[dict(
+            type="buttons",
+            showactive=False,
+            x=0.05, y=1.15,
+            buttons=[dict(
+                label="PLAY BALL",
+                method="animate",
+                args=[None, {"frame": {"duration": 15, "redraw": False}, "fromcurrent": True, "transition": {"duration": 0}}]
+            )]
+        )]
+    ),
+    frames=[go.Frame(data=[
+        go.Scatter(x=drag_padded[:k,0], y=drag_padded[:k,1]),
+        go.Scatter(x=ideal_padded[:k,0], y=ideal_padded[:k,1]),
+        go.Scatter(x=[drag_padded[k,0]], y=[drag_padded[k,1]])
+    ]) for k in range(1, max_len, 2)]
+)
+
+st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
 st.divider()
-c1, c2 = st.columns(2)
-c1.metric("Distance", f"{drag_path[-1,0]:.1f} m")
-c2.metric("Peak Height", f"{max(drag_path[:,1]):.1f} m")
+col1, col2 = st.columns(2)
+col1.metric("Distance", f"{drag_path[-1,0]:.1f} m")
+col2.metric("Peak Height", f"{max(drag_path[:,1]):.1f} m")
