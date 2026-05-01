@@ -1,49 +1,67 @@
 import streamlit as st
 import numpy as np
-import matplotlib.pyplot as plt
+import pandas as pd
+import plotly.graph_objects as go
 
-st.title("Baseball Physics Simulator")
-st.write("Comparing motion both with and without air resistance. This one's for you, Sir Joni.")
+st.set_page_config(page_title="Baseball Pro", layout="wide")
+st.title("Baseball Physics Pro")
 
 st.sidebar.header("Simulation Settings")
 v0 = st.sidebar.slider("Initial Velocity (m/s)", 20.0, 100.0, 50.0)
 angle = st.sidebar.slider("Launch Angle (degrees)", 0.0, 90.0, 35.0)
 
 m, r, rho, C, g = 0.145, 0.0366, 1.2, 0.5, 9.8
-A = np.pi * r**2
+A, dt = np.pi * r**2, 0.05
 D = (rho * C * A) / 2
-dt = 0.01
 
-angle_rad = np.radians(angle)
-vx, vy = v0 * np.cos(angle_rad), v0 * np.sin(angle_rad)
-x, y = 0.0, 0.0
-x_list, y_list = [x], [y]
+def get_trajectory(v0, angle_deg, drag=True):
+    angle_rad = np.radians(angle_deg)
+    vx, vy = v0 * np.cos(angle_rad), v0 * np.sin(angle_rad)
+    x, y = 0.0, 0.0
+    path = [[x, y]]
+    
+    while y >= 0:
+        v = np.sqrt(vx**2 + vy**2)
+        ax = -(D/m) * v * vx if drag else 0
+        ay = -g - (D/m) * v * vy if drag else -g
+        x += vx * dt
+        y += vy * dt
+        vx += ax * dt
+        vy += ay * dt
+        if y >= 0: path.append([x, y])
+    return np.array(path)
 
-while y >= 0:
-    v = np.sqrt(vx**2 + vy**2)
-    ax = -(D/m) * v * vx
-    ay = -g - (D/m) * v * vy
-    x += vx * dt + 0.5 * ax * dt**2
-    y += vy * dt + 0.5 * ay * dt**2
-    vx += ax * dt
-    vy += ay * dt
-    x_list.append(x)
-    y_list.append(y)
+drag_path = get_trajectory(v0, angle)
+ideal_path = get_trajectory(v0, angle, drag=False)
 
-fig, ax = plt.subplots(figsize=(8, 4))
-ax.plot(x_list, y_list, color='green', label='With Air Drag')
+max_len = max(len(drag_path), len(ideal_path))
+def pad_path(path, length):
+    last_val = path[-1]
+    return np.vstack([path, np.tile(last_val, (length - len(path), 1))])
 
-# Ideal trajectory
-t_ideal = np.linspace(0, (2 * v0 * np.sin(angle_rad)) / g, 100)
-x_ideal = v0 * np.cos(angle_rad) * t_ideal
-y_ideal = v0 * np.sin(angle_rad) * t_ideal - 0.5 * g * t_ideal**2
-ax.plot(x_ideal[y_ideal >= 0], y_ideal[y_ideal >= 0], 
-         color='purple', linestyle='--', label='No Air Drag')
+drag_padded = pad_path(drag_path, max_len)
+ideal_padded = pad_path(ideal_path, max_len)
 
-ax.set_title('Baseball Trajectory')
-ax.set_xlabel('Distance (m)')
-ax.set_ylabel('Height (m)')
-ax.legend()
-ax.grid(True)
+fig = go.Figure(
+    data=[
+        go.Scatter(x=drag_padded[:,0], y=drag_padded[:,1], name="With Drag", line=dict(color="green", width=2)),
+        go.Scatter(x=ideal_padded[:,0], y=ideal_padded[:,1], name="No Drag", line=dict(color="purple", dash="dash")),
+        go.Scatter(x=[0], y=[0], name="Baseball", mode="markers", marker=dict(color="white", size=12, line=dict(color="red", width=2)))
+    ],
+    layout=go.Layout(
+        xaxis=dict(range=[0, max(ideal_path[:,0]) * 1.1], title="Distance (m)"),
+        yaxis=dict(range=[0, max(ideal_path[:,1]) * 1.1], title="Height (m)"),
+        updatemenus=[dict(type="buttons", buttons=[dict(label="Play Ball", method="animate", args=[None, {"frame": {"duration": 20, "redraw": True}}])])]
+    ),
+    frames=[go.Frame(data=[
+        go.Scatter(x=drag_padded[:k,0], y=drag_padded[:k,1]),
+        go.Scatter(x=ideal_padded[:k,0], y=ideal_padded[:k,1]),
+        go.Scatter(x=[drag_padded[k,0]], y=[drag_padded[k,1]])
+    ]) for k in range(1, max_len, 2)]
+)
 
-st.pyplot(fig)
+st.plotly_chart(fig, use_container_width=True)
+
+col1, col2 = st.columns(2)
+col1.metric("Distance (with drag)", f"{drag_path[-1,0]:.1f} m")
+col2.metric("Max Height", f"{max(drag_path[:,1]):.1f} m")
