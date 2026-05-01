@@ -5,6 +5,27 @@ import plotly.graph_objects as go
 
 st.set_page_config(page_title="Baseball Pro", layout="wide")
 st.title("Baseball Physics Pro")
+st.markdown("""
+    <style>
+    /* for the ugly play button */
+    .updatemenu-button {
+        fill: #28a745 !important;      /* Color of the text/icon */
+        background-color: #28a745 !important; /* Background color */
+        border: 1px solid #1e7e34 !important;
+        border-radius: 5px !important;
+    }
+    
+    .updatemenu-item-text {
+        fill: white !important;
+        font-weight: bold !important;
+    }
+
+    .updatemenu-button:hover {
+        fill: #218838 !important;
+        background-color: #218838 !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 st.sidebar.header("Simulation Settings")
 v0 = st.sidebar.slider("Initial Velocity (m/s)", 20.0, 100.0, 50.0)
